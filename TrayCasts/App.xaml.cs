@@ -26,6 +26,8 @@ public partial class App : Application
     private EventWaitHandle? _showEvent;
     private RegisteredWaitHandle? _showWait;
     private TrayIcon? _trayIcon;
+    private readonly TrayBadge _badge = new();
+    private NewEpisodeMonitor? _newEpisodes;
     private TrayFlyoutWindow? _flyout;
     private DispatcherQueue? _dispatcher;
     private bool _isExiting;
@@ -75,6 +77,14 @@ public partial class App : Application
         PlaybackService.Initialize(_dispatcher);
         PlaybackService.StateChanged += (_, _) => SetTrayStatus(PlaybackService.TrayStatus(MaxTooltipLength - DisplayName.Length - 1));
 
+        _newEpisodes = new NewEpisodeMonitor(_dispatcher, () => _flyout?.IsPopupVisible == true, UpdateTrayIcon);
+        if (SettingsService.ShowNewEpisodeBadge)
+        {
+            _newEpisodes.Start();
+        }
+
+        UpdateTrayIcon();
+
         // First run: show where the app lives instead of launching into silence.
         if (!SettingsService.HasLaunchedBefore)
         {
@@ -105,6 +115,7 @@ public partial class App : Application
         flyout.HidePopup();
         flyout.ShowMainPage();
         flyout.ShowPopup();
+        MarkNewEpisodesSeen();
     }
 
     /// <summary>Shows the flyout on its settings page.</summary>
@@ -131,11 +142,50 @@ public partial class App : Application
             }
 
             flyout.Toggle();
+            if (flyout.IsPopupVisible && !flyout.IsShowingSettings)
+            {
+                MarkNewEpisodesSeen();
+            }
         };
         _trayIcon.ContextMenu += TrayIcon_ContextMenu;
         _trayIcon.IsVisible = true;
         WindowPlacementService.SetTrayIcon(_trayIcon);
-        SystemThemeService.Changed += (_, _) => _dispatcher?.TryEnqueue(() => _trayIcon?.SetIcon(TrayIconPath));
+        SystemThemeService.Changed += (_, _) => _dispatcher?.TryEnqueue(UpdateTrayIcon);
+    }
+
+    /// <summary>Turns the background new-episode check and the tray badge on or off (Settings).</summary>
+    public void SetNewEpisodeBadge(bool enabled)
+    {
+        SettingsService.ShowNewEpisodeBadge = enabled;
+        SettingsService.NewEpisodeCount = 0;
+        if (enabled)
+        {
+            _newEpisodes?.Start();
+        }
+        else
+        {
+            _newEpisodes?.Stop();
+        }
+
+        UpdateTrayIcon();
+    }
+
+    /// <summary>The flyout's episode list is on screen, so whatever was new has been seen.</summary>
+    private void MarkNewEpisodesSeen()
+    {
+        if (SettingsService.NewEpisodeCount > 0)
+        {
+            SettingsService.NewEpisodeCount = 0;
+            UpdateTrayIcon();
+        }
+    }
+
+    private void UpdateTrayIcon()
+    {
+        if (_trayIcon is not null)
+        {
+            _badge.Update(_trayIcon, TrayIconPath, SettingsService.ShowNewEpisodeBadge ? SettingsService.NewEpisodeCount : 0);
+        }
     }
 
     // A white glyph disappears on a light taskbar, which follows the Windows theme, not the app theme.
@@ -226,6 +276,9 @@ public partial class App : Application
             _trayIcon.Dispose();
             _trayIcon = null;
         }
+
+        _newEpisodes?.Stop();
+        _badge.Release();
 
         _showWait?.Unregister(null);
         _showEvent?.Dispose();
