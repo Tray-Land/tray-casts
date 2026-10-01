@@ -73,11 +73,55 @@
                         OnContent=""
                         Toggled="StartupToggle_Toggled" />
                 </Grid>
+                <Grid ColumnSpacing="12" Style="{StaticResource SettingsCardStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="Count new episodes on the tray icon" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="Checks your shows once an hour, even with the flyout closed."
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ToggleSwitch
+                        x:Name="BadgeToggle"
+                        Grid.Column="1"
+                        MinWidth="0"
+                        AutomationProperties.Name="Count new episodes on the tray icon"
+                        OffContent=""
+                        OnContent=""
+                        Toggled="BadgeToggle_Toggled" />
+                </Grid>
 
                 <TextBlock
                     Margin="0,16,0,4"
                     Style="{StaticResource BodyStrongTextBlockStyle}"
                     Text="Playback" />
+                <Grid ColumnSpacing="12" Style="{StaticResource SettingsCardStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="Play the next episode" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="When one ends, carry on with the show, then with Latest."
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ToggleSwitch
+                        x:Name="AutoPlayToggle"
+                        Grid.Column="1"
+                        MinWidth="0"
+                        AutomationProperties.Name="Play the next episode"
+                        OffContent=""
+                        OnContent=""
+                        Toggled="AutoPlayToggle_Toggled" />
+                </Grid>
                 <Grid RowSpacing="8" Style="{StaticResource SettingsCardStyle}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -117,6 +161,55 @@
                         MinWidth="160"
                         AutomationProperties.Name="Skip forward"
                         SelectionChanged="SkipForwardCombo_SelectionChanged" />
+                </Grid>
+
+                <TextBlock
+                    Margin="0,16,0,4"
+                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                    Text="Shows" />
+                <Grid RowSpacing="8" Style="{StaticResource SettingsCardStyle}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="OPML" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="Bring your shows from another podcast app, or take them with you."
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel
+                        Grid.Row="1"
+                        Orientation="Horizontal"
+                        Spacing="8">
+                        <Button
+                            x:Name="ImportButton"
+                            Click="ImportButton_Click"
+                            Content="Import…" />
+                        <Button
+                            x:Name="ExportButton"
+                            Click="ExportButton_Click"
+                            Content="Export…" />
+                    </StackPanel>
+                    <StackPanel
+                        x:Name="OpmlStatusPanel"
+                        Grid.Row="2"
+                        Spacing="4"
+                        Visibility="Collapsed">
+                        <ProgressBar
+                            x:Name="ImportProgress"
+                            AutomationProperties.Name="Import progress"
+                            Visibility="Collapsed" />
+                        <TextBlock
+                            x:Name="OpmlStatusText"
+                            AutomationProperties.LiveSetting="Polite"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
                 </Grid>
             </StackPanel>
         </ScrollViewer>

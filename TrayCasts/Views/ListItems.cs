@@ -156,7 +156,13 @@ public sealed class ShowItem : ObservableItem
         DateTimeOffset? newest = show.Episodes.Count > 0 ? show.Episodes.Max(e => e.Published) : null;
         Meta = EpisodeFormat.Meta(
             show.Author,
-            newest is null ? null : "Latest " + EpisodeFormat.Published(newest, DateTimeOffset.Now, CultureInfo.CurrentCulture).ToLower(CultureInfo.CurrentCulture));
+            newest is null ? null : "Latest " + EpisodeFormat.Published(newest, DateTimeOffset.Now, CultureInfo.CurrentCulture).ToLower(CultureInfo.CurrentCulture),
+            show.Order switch
+            {
+                EpisodeOrder.OldestFirst => "Oldest first",
+                EpisodeOrder.NewestThenCatchUp => "Catching up",
+                _ => null,
+            });
         AccessibleName = $"{show.Title}, {Meta}";
     }
 

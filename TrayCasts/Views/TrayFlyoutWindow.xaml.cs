@@ -189,6 +189,7 @@ public sealed partial class TrayFlyoutWindow : WindowEx
         _isPopupVisible = false;
         _lastDismissedAtUtc = DateTime.UtcNow;
         _page.OnHidden();
+        _settingsPage?.OnHidden();
         PlayHideAnimation();
 
         _closeTimer.Stop();
@@ -211,6 +212,7 @@ public sealed partial class TrayFlyoutWindow : WindowEx
         _closeTimer.Stop();
         _animationTimer.Stop();
         _page.OnHidden();
+        _settingsPage?.OnHidden();
         _page.Dispose();
         _settingsPage = null;
 
@@ -375,6 +377,12 @@ public sealed partial class TrayFlyoutWindow : WindowEx
         }
 
         if (foreground == _hwnd || PInvoke.GetAncestor(foreground, GET_ANCESTOR_FLAGS.GA_ROOT) == _hwnd)
+        {
+            return true;
+        }
+
+        // A dialog the flyout opened (the OPML file pickers) is owned by it.
+        if (PInvoke.GetWindow(foreground, GET_WINDOW_CMD.GW_OWNER) == _hwnd)
         {
             return true;
         }

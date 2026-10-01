@@ -3,10 +3,13 @@
     x:Class="TrayCasts.Views.FlyoutPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:TrayCasts.Controls"
     xmlns:local="using:TrayCasts.Views"
     Background="Transparent">
 
     <Page.Resources>
+        <x:Double x:Key="NowPlayingArtMax">280</x:Double>
+
         <Style
             x:Key="RowItemStyle"
             BasedOn="{StaticResource DefaultListViewItemStyle}"
@@ -203,7 +206,6 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!--  Header  -->
@@ -249,7 +251,18 @@
                 Click="RefreshButton_Click"
                 Style="{StaticResource FlyoutIconButtonStyle}"
                 ToolTipService.ToolTip="Check for new episodes">
-                <FontIcon FontSize="14" Glyph="&#xE72C;" />
+                <Grid>
+                    <FontIcon
+                        x:Name="RefreshIcon"
+                        FontSize="14"
+                        Glyph="&#xE72C;" />
+                    <ProgressRing
+                        x:Name="LoadingRing"
+                        Width="14"
+                        Height="14"
+                        AutomationProperties.Name="Checking for new episodes"
+                        IsActive="False" />
+                </Grid>
             </Button>
             <Button
                 Grid.Column="4"
@@ -351,6 +364,7 @@
                     <ColumnDefinition Width="56" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Border
                     Width="56"
@@ -379,8 +393,42 @@
                         Style="{StaticResource CaptionTextBlockStyle}" />
                 </StackPanel>
                 <Button
-                    x:Name="UnfollowButton"
+                    x:Name="ShowOptionsButton"
                     Grid.Column="2"
+                    VerticalAlignment="Center"
+                    AutomationProperties.Name="Episode order and limit"
+                    Style="{StaticResource FlyoutIconButtonStyle}"
+                    ToolTipService.ToolTip="Episode order and limit">
+                    <FontIcon FontSize="14" Glyph="&#xE713;" />
+                    <Button.Flyout>
+                        <Flyout x:Name="ShowOptionsFlyout" Placement="BottomEdgeAlignedRight">
+                            <StackPanel Width="260" Spacing="12">
+                                <RadioButtons
+                                    x:Name="OrderRadios"
+                                    Header="Listen"
+                                    SelectionChanged="ShowOptions_Changed">
+                                    <x:String>Newest first</x:String>
+                                    <x:String>Oldest first</x:String>
+                                    <x:String>Newest, then catch up</x:String>
+                                </RadioButtons>
+                                <TextBlock
+                                    x:Name="OrderHintText"
+                                    Margin="0,-4,0,0"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    TextWrapping="Wrap" />
+                                <ComboBox
+                                    x:Name="LimitBox"
+                                    HorizontalAlignment="Stretch"
+                                    Header="Episodes in Latest"
+                                    SelectionChanged="ShowOptions_Changed" />
+                            </StackPanel>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
+                <Button
+                    x:Name="UnfollowButton"
+                    Grid.Column="3"
                     VerticalAlignment="Center"
                     AutomationProperties.Name="Unfollow"
                     Style="{StaticResource FlyoutIconButtonStyle}"
@@ -462,48 +510,151 @@
                 SelectionMode="None" />
         </Grid>
 
+        <!--
+            The player's card surface, drawn apart from the card so it can grow: bottom-aligned at the card's
+            height around the mini player, filling the whole content area on the full page. In between, it stays
+            full size and a clip moves its top edge (see the PlayerSurface class).
+        -->
+        <Border
+            x:Name="PlayerCardSurface"
+            Grid.Row="2"
+            Grid.RowSpan="2"
+            VerticalAlignment="Bottom"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Visibility="Collapsed" />
+
+        <!--
+            Now playing, full page: big art and the episode's details, on the player surface; the card keeps the controls.
+            It spans the card's row, with a bottom margin set to the card's height less its header, so it is laid
+            out the same with the header or without it: a drag can open it without anything changing size.
+        -->
+        <Grid
+            x:Name="NowPlayingPanel"
+            Grid.Row="2"
+            Grid.RowSpan="2"
+            Padding="16,16,16,4"
+            RowSpacing="16"
+            Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <!--  Scales the square down when the flyout is short, never up past full size  -->
+            <Viewbox
+                x:Name="FullArtHost"
+                MaxWidth="{StaticResource NowPlayingArtMax}"
+                MaxHeight="{StaticResource NowPlayingArtMax}"
+                ManipulationCompleted="ArtDrag_ManipulationCompleted"
+                ManipulationDelta="ArtDrag_ManipulationDelta"
+                ManipulationMode="TranslateY"
+                ManipulationStarted="FullArt_ManipulationStarted"
+                Stretch="Uniform">
+                <Border
+                    x:Name="FullArtTile"
+                    Width="{StaticResource NowPlayingArtMax}"
+                    Height="{StaticResource NowPlayingArtMax}"
+                    CornerRadius="8"
+                    Style="{StaticResource ArtTileStyle}">
+                    <Grid>
+                        <FontIcon
+                            FontSize="64"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Glyph="&#xE8D6;" />
+                        <Image
+                            x:Name="FullArt"
+                            AutomationProperties.AccessibilityView="Raw"
+                            Stretch="UniformToFill" />
+                    </Grid>
+                </Border>
+            </Viewbox>
+            <StackPanel
+                x:Name="FullDetails"
+                Grid.Row="1"
+                Spacing="4">
+                <controls:MarqueeLabel
+                    x:Name="FullTitle"
+                    HorizontalAlignment="Center"
+                    FontSize="20"
+                    FontWeight="SemiBold"
+                    TextAlignment="Center" />
+                <HyperlinkButton
+                    x:Name="FullShowLink"
+                    Padding="4,2"
+                    HorizontalAlignment="Center"
+                    Click="FullShowLink_Click">
+                    <controls:MarqueeLabel x:Name="FullShowText" TextAlignment="Center" />
+                </HyperlinkButton>
+                <TextBlock
+                    x:Name="FullMeta"
+                    HorizontalAlignment="Center"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    TextAlignment="Center"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+        </Grid>
+
         <!--  Now playing  -->
         <Border
             x:Name="NowPlayingCard"
             Grid.Row="3"
             Padding="12,10,12,6"
-            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-            BorderThickness="1"
-            CornerRadius="8"
             Visibility="Collapsed">
-            <StackPanel>
-                <Grid ColumnSpacing="10">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="40" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Border
-                        Width="40"
-                        Height="40"
-                        Style="{StaticResource ArtTileStyle}">
-                        <Grid>
-                            <FontIcon
+            <StackPanel x:Name="NowPlayingCardContent">
+                <Button
+                    x:Name="NowPlayingHeader"
+                    Margin="-6,-4,-6,0"
+                    Padding="6,4"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Stretch"
+                    AutomationProperties.Name="Open now playing"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Click="NowPlayingHeader_Click"
+                    ManipulationCompleted="ArtDrag_ManipulationCompleted"
+                    ManipulationDelta="ArtDrag_ManipulationDelta"
+                    ManipulationMode="TranslateY"
+                    ManipulationStarted="NowPlayingHeader_ManipulationStarted"
+                    ToolTipService.ToolTip="Open now playing">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="40" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Border
+                            x:Name="MiniArtTile"
+                            Width="40"
+                            Height="40"
+                            Style="{StaticResource ArtTileStyle}">
+                            <Grid>
+                                <FontIcon
+                                    FontSize="14"
+                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                    Glyph="&#xE8D6;" />
+                                <Image x:Name="NowPlayingArt" Stretch="UniformToFill" />
+                            </Grid>
+                        </Border>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <controls:MarqueeLabel
+                                x:Name="NowPlayingTitle"
                                 FontSize="14"
-                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                Glyph="&#xE8D6;" />
-                            <Image x:Name="NowPlayingArt" Stretch="UniformToFill" />
-                        </Grid>
-                    </Border>
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock
-                            x:Name="NowPlayingTitle"
-                            Style="{StaticResource BodyStrongTextBlockStyle}"
-                            TextTrimming="CharacterEllipsis"
-                            TextWrapping="NoWrap" />
-                        <TextBlock
-                            x:Name="NowPlayingShow"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            TextTrimming="CharacterEllipsis"
-                            TextWrapping="NoWrap" />
-                    </StackPanel>
-                </Grid>
+                                FontWeight="SemiBold" />
+                            <controls:MarqueeLabel
+                                x:Name="NowPlayingShow"
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                        <FontIcon
+                            Grid.Column="2"
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Glyph="&#xE70E;" />
+                    </Grid>
+                </Button>
                 <TextBlock
                     x:Name="PlaybackErrorText"
                     Margin="0,6,0,0"
@@ -596,20 +747,5 @@
                 </Grid>
             </StackPanel>
         </Border>
-
-        <!--  Footer  -->
-        <Grid Grid.Row="4" Margin="4,0">
-            <TextBlock
-                x:Name="UpdatedText"
-                VerticalAlignment="Center"
-                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                Style="{StaticResource CaptionTextBlockStyle}" />
-            <ProgressRing
-                x:Name="LoadingRing"
-                Width="16"
-                Height="16"
-                HorizontalAlignment="Right"
-                IsActive="False" />
-        </Grid>
     </Grid>
 </Page>
