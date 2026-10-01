@@ -45,6 +45,27 @@ internal static class SettingsService
         set => Set(nameof(PlaybackRate), value);
     }
 
+    /// <summary>Starts the next episode when one finishes (see <c>LibraryOps.NextToPlay</c>).</summary>
+    public static bool AutoPlayNext
+    {
+        get => Get(nameof(AutoPlayNext), true);
+        set => Set(nameof(AutoPlayNext), value);
+    }
+
+    /// <summary>Opt-in: checks feeds hourly in the background and counts new episodes on the tray icon.</summary>
+    public static bool ShowNewEpisodeBadge
+    {
+        get => Get(nameof(ShowNewEpisodeBadge), false);
+        set => Set(nameof(ShowNewEpisodeBadge), value);
+    }
+
+    /// <summary>New episodes found in the background since the flyout was last opened.</summary>
+    public static int NewEpisodeCount
+    {
+        get => Math.Max(0, Get(nameof(NewEpisodeCount), 0));
+        set => Set(nameof(NewEpisodeCount), value);
+    }
+
     /// <summary>The episode last loaded in the player, so "Resume" works after a restart.</summary>
     public static NowPlaying? NowPlaying
     {

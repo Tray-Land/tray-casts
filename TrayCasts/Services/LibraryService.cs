@@ -5,8 +5,11 @@ using Windows.Storage;
 
 namespace TrayCasts.Services;
 
-/// <summary>Outcome of refreshing every show: how many feeds couldn't be read.</summary>
-internal sealed record RefreshOutcome(int Checked, int Failed, Exception? LastError);
+/// <summary>Outcome of refreshing every show: how many feeds couldn't be read, and how many new episodes came out.</summary>
+internal sealed record RefreshOutcome(int Checked, int Failed, Exception? LastError, int NewReleases = 0);
+
+/// <summary>Outcome of an OPML import.</summary>
+internal sealed record ImportOutcome(int Added, int AlreadyFollowed, int Failed);
 
 /// <summary>
 /// The followed shows and listening progress. The library is loaded when the flyout needs it and
@@ -83,6 +86,26 @@ internal static class LibraryService
     }
 
     /// <summary>
+    /// Changes a show's order and limit, saved and shown at once. Switching to an order that works
+    /// through the backlog then fetches the whole feed, since only the newest episodes were kept;
+    /// if that fails, the next refresh fetches it instead.
+    /// </summary>
+    public static async Task SetShowOptionsAsync(Subscription show, EpisodeOrder order, int? limit, CancellationToken cancellationToken)
+    {
+        bool needsBacklog = LibraryOps.SetOptions(show, order, limit);
+        await SaveLibraryAsync();
+        RaiseChanged();
+
+        if (needsBacklog)
+        {
+            FeedFetchResult fetch = await Feeds.FetchAsync(show.FeedUrl, null, null, cancellationToken);
+            _ = LibraryOps.Apply(show, fetch, DateTimeOffset.UtcNow);
+            await SaveLibraryAsync();
+            RaiseChanged();
+        }
+    }
+
+    /// <summary>
     /// Checks every show, a few at a time, with conditional requests. Throws only when every feed
     /// failed (so the poller backs off); partial failures are reported in the outcome.
     /// </summary>
@@ -96,6 +119,7 @@ internal static class LibraryService
 
         using SemaphoreSlim gate = new(MaxConcurrentFetches);
         int failed = 0;
+        int newReleases = 0;
         Exception? lastError = null;
         bool changed = false;
 
@@ -106,7 +130,7 @@ internal static class LibraryService
             try
             {
                 FeedFetchResult fetch = await Feeds.FetchAsync(show.FeedUrl, show.ETag, show.LastModified, cancellationToken);
-                LibraryOps.Apply(show, fetch, DateTimeOffset.UtcNow);
+                newReleases += LibraryOps.Apply(show, fetch, DateTimeOffset.UtcNow);
                 changed |= !fetch.NotModified;
             }
             catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
@@ -133,7 +157,75 @@ internal static class LibraryService
             RaiseChanged();
         }
 
-        return new RefreshOutcome(shows.Count, failed, lastError);
+        return new RefreshOutcome(shows.Count, failed, lastError, newReleases);
+    }
+
+    /// <summary>
+    /// Follows every show in an OPML file that isn't followed yet, a few fetches at a time, saving
+    /// once at the end (also when cancelled, keeping the shows added so far). A feed that can't be
+    /// read is skipped and counted.
+    /// </summary>
+    public static async Task<ImportOutcome> ImportOpmlAsync(string path, Action<int> checkedCount, CancellationToken cancellationToken)
+    {
+        List<OpmlFeed> feeds;
+        await using (FileStream stream = File.OpenRead(path))
+        {
+            feeds = await Task.Run(() => Opml.Read(stream), cancellationToken);
+        }
+
+        List<OpmlFeed> missing = [.. feeds.Where(f => Library.Find(f.FeedUrl) is null)];
+        using SemaphoreSlim gate = new(MaxConcurrentFetches);
+        int added = 0;
+        int failed = 0;
+        int done = 0;
+        try
+        {
+            // Each task resumes on the UI thread after its fetch, so the adds never race each other.
+            await Task.WhenAll(missing.Select(async feed =>
+            {
+                await gate.WaitAsync(cancellationToken);
+                try
+                {
+                    FeedFetchResult fetch = await Feeds.FetchAsync(feed.FeedUrl, null, null, cancellationToken);
+                    if (Library.Find(feed.FeedUrl) is null)
+                    {
+                        Library.Subscriptions.Add(LibraryOps.CreateSubscription(feed.FeedUrl, fetch, DateTimeOffset.UtcNow));
+                        added++;
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+                {
+                    failed++;
+                }
+                finally
+                {
+                    gate.Release();
+                    checkedCount(++done);
+                }
+            }));
+        }
+        finally
+        {
+            if (added > 0)
+            {
+                await SaveLibraryAsync();
+                RaiseChanged();
+            }
+        }
+
+        return new ImportOutcome(added, feeds.Count - missing.Count, failed);
+    }
+
+    /// <summary>Writes the followed shows to an OPML file, for another podcast app or a backup.</summary>
+    public static async Task<int> ExportOpmlAsync(string path)
+    {
+        List<Subscription> shows = [.. Library.Subscriptions.OrderBy(s => s.Title, StringComparer.CurrentCultureIgnoreCase)];
+        await Task.Run(() =>
+        {
+            using FileStream stream = File.Create(path);
+            Opml.Write(stream, shows, DateTimeOffset.UtcNow);
+        });
+        return shows.Count;
     }
 
     public static EpisodeProgress? GetProgress(string feedUrl, string episodeId) => Progress.Get(feedUrl, episodeId);
@@ -168,8 +260,20 @@ internal static class LibraryService
         }
     }
 
+    /// <summary>True while a flyout shows the library; work done without one should <see cref="ReleaseIfUnviewed"/> after.</summary>
+    public static bool IsViewed { get; set; }
+
     /// <summary>Drops the in-memory library when the flyout closes; it reloads from disk next time.</summary>
     public static void Unload() => _library = null;
+
+    /// <summary>For background work (the new-episode check, auto-play): unloads unless a flyout is using the library.</summary>
+    public static void ReleaseIfUnviewed()
+    {
+        if (!IsViewed)
+        {
+            Unload();
+        }
+    }
 
     private static void RaiseChanged()
     {

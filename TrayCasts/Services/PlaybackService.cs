@@ -1,6 +1,7 @@
 using Microsoft.UI.Dispatching;
 using TrayCasts.Formatting;
 using TrayCasts.Playback;
+using TrayCasts.Storage;
 using Windows.Media;
 using Windows.Media.Core;
 using Windows.Media.Playback;
@@ -316,6 +317,23 @@ internal static class PlaybackService
         _pendingPositionSeconds = 0;
         DisposePlayer();
         RaiseStateChanged();
+
+        if (SettingsService.AutoPlayNext && Current is { } finished)
+        {
+            PlayNextAfter(finished);
+        }
+    }
+
+    /// <summary>Carries on with what's next (<see cref="LibraryOps.NextToPlay"/>), resuming it where it was left.</summary>
+    private static void PlayNextAfter(NowPlaying finished)
+    {
+        ShowEpisode? next = LibraryOps.NextToPlay(
+            LibraryService.Library.Subscriptions, LibraryService.Progress, finished.FeedUrl, finished.Episode.Id);
+        LibraryService.ReleaseIfUnviewed();
+        if (next is not null)
+        {
+            PlayOrToggle(LibraryOps.ToNowPlaying(next.Show, next.Episode));
+        }
     }
 
     private static void OnFailed(MediaPlayerFailedEventArgs args)
