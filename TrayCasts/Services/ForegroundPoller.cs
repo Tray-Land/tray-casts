@@ -22,12 +22,15 @@ internal sealed class ForegroundPoller
 
     /// <param name="staleAfter">How old data may be when <see cref="Start"/> skips the immediate
     /// refresh. Defaults to half the interval, so a quick close-and-reopen doesn't refetch.</param>
-    public ForegroundPoller(DispatcherQueue dispatcher, TimeSpan interval, Func<CancellationToken, Task> refresh, TimeSpan? staleAfter = null)
+    /// <param name="lastSuccess">When the data was last refreshed, if it outlives this poller (the
+    /// flyout closes after a minute hidden; saved data doesn't).</param>
+    public ForegroundPoller(DispatcherQueue dispatcher, TimeSpan interval, Func<CancellationToken, Task> refresh, TimeSpan? staleAfter = null, DateTimeOffset? lastSuccess = null)
     {
         _dispatcher = dispatcher;
         _interval = interval;
         _refresh = refresh;
         _staleAfter = staleAfter ?? interval / 2;
+        _lastSuccess = lastSuccess ?? DateTimeOffset.MinValue;
         _timer = dispatcher.CreateTimer();
         _timer.IsRepeating = false; // Re-armed after each refresh, so refreshes never overlap.
         _timer.Tick += (_, _) => _ = RefreshNowAsync();

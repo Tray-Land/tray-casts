@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using TrayCasts.Playback;
 using Windows.Storage;
 
 namespace TrayCasts.Services;
@@ -22,6 +23,40 @@ internal static class SettingsService
     {
         get => Get(nameof(HasLaunchedBefore), false);
         set => Set(nameof(HasLaunchedBefore), value);
+    }
+
+    public static int SkipBackSeconds
+    {
+        get => PlaybackPolicy.Sanitize(Get(nameof(SkipBackSeconds), PlaybackPolicy.DefaultSkipBackSeconds),
+            PlaybackPolicy.SkipBackChoices, PlaybackPolicy.DefaultSkipBackSeconds);
+        set => Set(nameof(SkipBackSeconds), value);
+    }
+
+    public static int SkipForwardSeconds
+    {
+        get => PlaybackPolicy.Sanitize(Get(nameof(SkipForwardSeconds), PlaybackPolicy.DefaultSkipForwardSeconds),
+            PlaybackPolicy.SkipForwardChoices, PlaybackPolicy.DefaultSkipForwardSeconds);
+        set => Set(nameof(SkipForwardSeconds), value);
+    }
+
+    public static double PlaybackRate
+    {
+        get => PlaybackPolicy.SanitizeSpeed(Get(nameof(PlaybackRate), 1.0));
+        set => Set(nameof(PlaybackRate), value);
+    }
+
+    /// <summary>The episode last loaded in the player, so "Resume" works after a restart.</summary>
+    public static NowPlaying? NowPlaying
+    {
+        get => GetJson(nameof(NowPlaying), CoreJsonContext.Default.NowPlaying);
+        set => SetJson(nameof(NowPlaying), value, CoreJsonContext.Default.NowPlaying);
+    }
+
+    /// <summary>When every feed was last checked, so a reopened flyout doesn't refetch needlessly.</summary>
+    public static DateTimeOffset? LastRefreshedUtc
+    {
+        get => Get<long>(nameof(LastRefreshedUtc), 0) is > 0 and var ticks ? new DateTimeOffset(ticks, TimeSpan.Zero) : null;
+        set => Set(nameof(LastRefreshedUtc), value?.UtcTicks);
     }
 
     public static T? GetJson<T>(string key, JsonTypeInfo<T> typeInfo)

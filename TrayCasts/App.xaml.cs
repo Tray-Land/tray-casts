@@ -27,7 +27,6 @@ public partial class App : Application
     private RegisteredWaitHandle? _showWait;
     private TrayIcon? _trayIcon;
     private TrayFlyoutWindow? _flyout;
-    private SettingsWindow? _settings;
     private DispatcherQueue? _dispatcher;
     private bool _isExiting;
 
@@ -73,6 +72,8 @@ public partial class App : Application
             (_, _) => _dispatcher.TryEnqueue(ShowFlyout), null, Timeout.Infinite, executeOnlyOnce: false);
 
         InitializeTrayIcon();
+        PlaybackService.Initialize(_dispatcher);
+        PlaybackService.StateChanged += (_, _) => SetTrayStatus(PlaybackService.TrayStatus(MaxTooltipLength - DisplayName.Length - 1));
 
         // First run: show where the app lives instead of launching into silence.
         if (!SettingsService.HasLaunchedBefore)
@@ -102,30 +103,35 @@ public partial class App : Application
     {
         TrayFlyoutWindow flyout = EnsureFlyout();
         flyout.HidePopup();
+        flyout.ShowMainPage();
         flyout.ShowPopup();
     }
 
+    /// <summary>Shows the flyout on its settings page.</summary>
     public void ShowSettings()
     {
-        _flyout?.HidePopup();
-        if (_settings is null)
+        TrayFlyoutWindow flyout = EnsureFlyout();
+        flyout.ShowSettingsPage();
+        if (!flyout.IsPopupVisible)
         {
-            _settings = new SettingsWindow();
-            _settings.Closed += (_, _) =>
-            {
-                _settings = null;
-                ReleaseIdleResourcesIfNoWindows();
-            };
+            flyout.ShowPopup();
         }
-
-        _settings.Activate();
-        _settings.BringToFront();
     }
 
     private void InitializeTrayIcon()
     {
         _trayIcon = new TrayIcon(1, TrayIconPath, DisplayName);
-        _trayIcon.Selected += (_, _) => EnsureFlyout().Toggle();
+        _trayIcon.Selected += (_, _) =>
+        {
+            // A tray click always lands on the content, even if settings were left open.
+            TrayFlyoutWindow flyout = EnsureFlyout();
+            if (!flyout.IsPopupVisible)
+            {
+                flyout.ShowMainPage();
+            }
+
+            flyout.Toggle();
+        };
         _trayIcon.ContextMenu += TrayIcon_ContextMenu;
         _trayIcon.IsVisible = true;
         WindowPlacementService.SetTrayIcon(_trayIcon);
@@ -139,6 +145,37 @@ public partial class App : Application
     private void TrayIcon_ContextMenu(TrayIcon sender, TrayIconEventArgs args)
     {
         MenuFlyout menu = new();
+
+        // Playback controls first while there's an episode loaded: the menu is the quickest remote.
+        if (PlaybackService.Current is { } current)
+        {
+            bool playing = PlaybackService.IsPlaying;
+            MenuFlyoutItem toggle = new()
+            {
+                Text = playing ? "Pause" : PlaybackService.PositionSeconds > 0 ? "Resume" : "Play",
+                Icon = new FontIcon { Glyph = playing ? "" : "" },
+            };
+            ToolTipService.SetToolTip(toggle, current.Episode.Title);
+            toggle.Click += (_, _) => PlaybackService.TogglePlayPause();
+            MenuFlyoutItem back = new()
+            {
+                Text = $"Back {SettingsService.SkipBackSeconds} seconds",
+                Icon = new FontIcon { Glyph = "" },
+            };
+            back.Click += (_, _) => PlaybackService.SkipBack();
+            MenuFlyoutItem forward = new()
+            {
+                Text = $"Forward {SettingsService.SkipForwardSeconds} seconds",
+                Icon = new FontIcon { Glyph = "" },
+            };
+            forward.Click += (_, _) => PlaybackService.SkipForward();
+
+            menu.Items.Add(toggle);
+            menu.Items.Add(back);
+            menu.Items.Add(forward);
+            menu.Items.Add(new MenuFlyoutSeparator());
+        }
+
         MenuFlyoutItem open = new() { Text = $"Open {DisplayName}", Icon = new FontIcon { Glyph = "" } };
         open.Click += (_, _) => ShowFlyout();
         MenuFlyoutItem settings = new() { Text = "Settings", Icon = new FontIcon { Glyph = "" } };
@@ -171,7 +208,7 @@ public partial class App : Application
 
     private void ReleaseIdleResourcesIfNoWindows()
     {
-        if (_flyout is null && _settings is null && !_isExiting)
+        if (_flyout is null && !_isExiting)
         {
             MemoryService.ReleaseIdle();
         }
@@ -180,8 +217,8 @@ public partial class App : Application
     private void ExitApp()
     {
         _isExiting = true;
+        PlaybackService.Shutdown();
         _flyout?.CloseWindow();
-        _settings?.Close();
 
         if (_trayIcon is not null)
         {
