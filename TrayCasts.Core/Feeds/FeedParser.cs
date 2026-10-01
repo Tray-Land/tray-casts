@@ -13,9 +13,10 @@ public sealed class FeedFormatException(string message, Exception? inner = null)
 /// <summary>Reads an RSS 2.0 podcast feed with the iTunes and Media RSS extensions.</summary>
 public static class FeedParser
 {
-    /// <summary>Episodes kept per show. Older ones are rarely played from a tray flyout, and the
-    /// whole library is loaded each time the flyout opens.</summary>
-    public const int MaxEpisodes = 100;
+    /// <summary>A cap on episodes read from one feed, against pathological feeds. Shows heard newest
+    /// first keep far fewer (see <see cref="Shows.ShowPolicy.EpisodesToKeep"/>); a show heard from
+    /// the start keeps its whole back catalog up to this.</summary>
+    public const int MaxEpisodes = 3000;
 
     private static readonly XNamespace ITunes = "http://www.itunes.com/dtds/podcast-1.0.dtd";
     private static readonly XNamespace Media = "http://search.yahoo.com/mrss/";

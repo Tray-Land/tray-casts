@@ -39,8 +39,28 @@ public sealed class Subscription
 
     public string? LastModified { get; set; }
 
-    /// <summary>Newest first, capped at <see cref="Feeds.FeedParser.MaxEpisodes"/>.</summary>
+    /// <summary>Which episodes the Latest list offers from this show, and how the show's page sorts them.</summary>
+    public EpisodeOrder Order { get; set; }
+
+    /// <summary>How many of this show's episodes the Latest list shows at once; null for all.</summary>
+    public int? EpisodeLimit { get; set; }
+
+    /// <summary>Newest first, capped by <see cref="Shows.ShowPolicy.EpisodesToKeep"/> for <see cref="Order"/>.</summary>
     public List<Episode> Episodes { get; set; } = [];
+}
+
+/// <summary>How a show is listened to: what comes up next in the Latest list.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<EpisodeOrder>))]
+public enum EpisodeOrder
+{
+    /// <summary>The newest episodes, played or not. For news and other shows heard as they come.</summary>
+    NewestFirst,
+
+    /// <summary>The oldest unplayed episodes, so a serial is heard from the start.</summary>
+    OldestFirst,
+
+    /// <summary>A new episode while it's unplayed; otherwise the oldest unplayed, working through the backlog.</summary>
+    NewestThenCatchUp,
 }
 
 /// <summary>The saved list of shows. Stored as <c>library.json</c>.</summary>

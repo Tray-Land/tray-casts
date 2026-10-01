@@ -1,4 +1,5 @@
 using TrayCasts.Feeds;
+using TrayCasts.Shows;
 using TrayCasts.Storage;
 
 namespace TrayCasts.Tests;
@@ -65,6 +66,16 @@ public sealed class StorageTests
     }
 
     [TestMethod]
+    public void CreateSubscription_NewShow_StartsWithDefaultLimit()
+    {
+        ParsedFeed feed = new("Show", null, null, [Ep("1", 1)]);
+
+        Subscription show = LibraryOps.CreateSubscription("https://a.test/rss", new FeedFetchResult(feed, null, null), DateTimeOffset.UtcNow);
+
+        Assert.AreEqual(ShowPolicy.DefaultEpisodeLimit, show.EpisodeLimit);
+    }
+
+    [TestMethod]
     public void Apply_NotModified_OnlyUpdatesCheckTime()
     {
         Subscription show = Show("https://a.test/rss", ("1", 1));
@@ -97,10 +108,96 @@ public sealed class StorageTests
         Subscription a = Show("https://a.test/rss", ("a1", 1), ("a3", 3));
         Subscription b = Show("https://b.test/rss", ("b2", 2), ("b4", 4));
 
-        List<ShowEpisode> latest = LibraryOps.Latest([a, b], 3);
+        List<ShowEpisode> latest = LibraryOps.Latest([a, b], new ProgressBook(), 3);
 
         CollectionAssert.AreEqual(new[] { "b4", "a3", "b2" }, latest.Select(x => x.Episode.Id).ToArray());
         Assert.AreSame(b, latest[0].Show);
+    }
+
+    [TestMethod]
+    public void Latest_BacklogShow_SortsWithItsNewestRelease()
+    {
+        Subscription news = Show("https://n.test/rss", ("n5", 5));
+        Subscription serial = Show("https://s.test/rss", ("s9", 9), ("s2", 2), ("s1", 1));
+        serial.Order = EpisodeOrder.OldestFirst;
+        serial.EpisodeLimit = 2;
+
+        List<ShowEpisode> latest = LibraryOps.Latest([news, serial], new ProgressBook(), 10);
+
+        CollectionAssert.AreEqual(new[] { "s1", "s2", "n5" }, latest.Select(x => x.Episode.Id).ToArray());
+    }
+
+    [TestMethod]
+    public void Apply_NewestFirst_KeepsOnlyRecentEpisodes()
+    {
+        Subscription show = Show("https://a.test/rss");
+        ParsedFeed feed = new("Show", null, null, [.. Enumerable.Range(0, ShowPolicy.RecentEpisodesKept + 5).Select(i => Ep($"e{i}", 1))]);
+
+        LibraryOps.Apply(show, new FeedFetchResult(feed, null, null), DateTimeOffset.UtcNow);
+        Assert.HasCount(ShowPolicy.RecentEpisodesKept, show.Episodes);
+
+        show.Order = EpisodeOrder.OldestFirst;
+        LibraryOps.Apply(show, new FeedFetchResult(feed, null, null), DateTimeOffset.UtcNow);
+        Assert.HasCount(ShowPolicy.RecentEpisodesKept + 5, show.Episodes);
+    }
+
+    [TestMethod]
+    public void SetOptions_ToBacklogOrder_NeedsFullFeedAndClearsValidators()
+    {
+        Subscription show = Show("https://a.test/rss", ("1", 1));
+        show.ETag = "\"v1\"";
+        show.LastModified = "yesterday";
+
+        bool needsBacklog = LibraryOps.SetOptions(show, EpisodeOrder.NewestThenCatchUp, 3);
+
+        Assert.IsTrue(needsBacklog);
+        Assert.IsNull(show.ETag);
+        Assert.IsNull(show.LastModified);
+        Assert.AreEqual(EpisodeOrder.NewestThenCatchUp, show.Order);
+        Assert.AreEqual(3, show.EpisodeLimit);
+    }
+
+    [TestMethod]
+    public void SetOptions_BackToNewestFirst_TrimsBacklog()
+    {
+        Subscription show = Show("https://a.test/rss");
+        show.Order = EpisodeOrder.OldestFirst;
+        show.ETag = "\"v1\"";
+        show.Episodes = [.. Enumerable.Range(0, ShowPolicy.RecentEpisodesKept + 5).Select(i => Ep($"e{i}", 1))];
+
+        bool needsBacklog = LibraryOps.SetOptions(show, EpisodeOrder.NewestFirst, 4);
+
+        Assert.IsFalse(needsBacklog);
+        Assert.HasCount(ShowPolicy.RecentEpisodesKept, show.Episodes);
+        Assert.AreEqual("\"v1\"", show.ETag);
+    }
+
+    [TestMethod]
+    public void SetOptions_UnofferedLimit_MeansAll()
+    {
+        Subscription show = Show("https://a.test/rss");
+
+        LibraryOps.SetOptions(show, EpisodeOrder.NewestFirst, 7);
+
+        Assert.IsNull(show.EpisodeLimit);
+    }
+
+    [TestMethod]
+    public async Task SaveAsync_ShowOptions_RoundTrip()
+    {
+        string path = Path.Combine(_folder, "library.json");
+        Library library = new();
+        Subscription show = Show("https://a.test/rss");
+        show.Order = EpisodeOrder.NewestThenCatchUp;
+        show.EpisodeLimit = 2;
+        library.Subscriptions.Add(show);
+
+        await LibraryStore.SaveAsync(path, library, CoreJsonContext.Default.Library);
+        Subscription loaded = LibraryStore.Load(path, CoreJsonContext.Default.Library).Subscriptions[0];
+
+        StringAssert.Contains(File.ReadAllText(path), "\"NewestThenCatchUp\"");
+        Assert.AreEqual(EpisodeOrder.NewestThenCatchUp, loaded.Order);
+        Assert.AreEqual(2, loaded.EpisodeLimit);
     }
 
     [TestMethod]
