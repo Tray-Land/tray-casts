@@ -1,5 +1,7 @@
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI;
+using TrayCasts.Feeds;
 using TrayCasts.Tray;
 using Windows.Graphics.Imaging;
 using Windows.Storage;
@@ -21,6 +23,8 @@ internal sealed class TrayBadge
 {
     private const uint IconFormatVersion = 0x00030000; // Required by CreateIconFromResourceEx.
 
+    private static readonly HttpClient ArtClient = FeedClient.CreateHttpClient($"TrayCasts/{AppVersion.Current} (Windows)");
+
     private readonly UISettings _uiSettings = new();
     private HICON _icon;
     private int _version;
@@ -30,11 +34,19 @@ internal sealed class TrayBadge
     private int _pixelsSize;
     private uint[]? _pixels;
 
-    /// <summary>Sets the tray icon to <paramref name="iconPath"/>, badged with <paramref name="count"/> when above zero.</summary>
-    public async void Update(TrayIcon trayIcon, string iconPath, int count)
+    // The playing show's artwork, kept for the same reason.
+    private string? _artUrl;
+    private int _artSize;
+    private uint[]? _artPixels;
+
+    /// <summary>
+    /// Sets the tray icon to <paramref name="iconPath"/>, or to the image at <paramref name="artUrl"/>
+    /// when given, badged with <paramref name="count"/> when above zero.
+    /// </summary>
+    public async void Update(TrayIcon trayIcon, string iconPath, int count, string? artUrl = null)
     {
         int version = ++_version;
-        if (count <= 0)
+        if (count <= 0 && artUrl is null)
         {
             trayIcon.SetIcon(iconPath);
             Release();
@@ -44,7 +56,22 @@ internal sealed class TrayBadge
         try
         {
             int size = PInvoke.GetSystemMetricsForDpi(SYSTEM_METRICS_INDEX.SM_CXSMICON, PInvoke.GetDpiForSystem());
-            uint[] pixels = await LoadPixelsAsync(iconPath, size);
+            uint[]? art = artUrl is null ? null : await LoadArtPixelsAsync(artUrl, size);
+            if (version != _version)
+            {
+                return; // A newer update won.
+            }
+
+            if (art is null && count <= 0)
+            {
+                // The art couldn't be loaded and there is no count to show.
+                trayIcon.SetIcon(iconPath);
+                Release();
+                return;
+            }
+
+            uint[] pixels = art ?? await LoadPixelsAsync(iconPath, size);
+
             if (version != _version)
             {
                 return; // A newer update won.
@@ -102,6 +129,36 @@ internal sealed class TrayBadge
         }
     }
 
+    /// <summary>The show's artwork scaled to the icon size, or null if it can't be fetched or decoded.</summary>
+    private async Task<uint[]?> LoadArtPixelsAsync(string url, int size)
+    {
+        if (_artPixels is not null && _artUrl == url && _artSize == size)
+        {
+            return _artPixels;
+        }
+
+        try
+        {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) || uri.Scheme is not ("http" or "https"))
+            {
+                return null;
+            }
+
+            byte[] bytes = await ArtClient.GetByteArrayAsync(uri);
+            using InMemoryRandomAccessStream stream = new();
+            await stream.WriteAsync(bytes.AsBuffer());
+            stream.Seek(0);
+            _artPixels = await DecodeAsync(stream, size);
+            _artUrl = url;
+            _artSize = size;
+            return _artPixels;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
     private async Task<uint[]> LoadPixelsAsync(string path, int size)
     {
         if (_pixels is not null && _pixelsPath == path && _pixelsSize == size)
@@ -111,6 +168,14 @@ internal sealed class TrayBadge
 
         StorageFile file = await StorageFile.GetFileFromPathAsync(path);
         using IRandomAccessStreamWithContentType stream = await file.OpenReadAsync();
+        _pixels = await DecodeAsync(stream, size);
+        _pixelsPath = path;
+        _pixelsSize = size;
+        return _pixels;
+    }
+
+    private static async Task<uint[]> DecodeAsync(IRandomAccessStream stream, int size)
+    {
         BitmapDecoder decoder = await BitmapDecoder.CreateAsync(stream);
 
         // An .ico holds several sizes: scale down from the smallest one at least this big.
@@ -135,10 +200,7 @@ internal sealed class TrayBadge
             ColorManagementMode.DoNotColorManage);
 
         // BGRA bytes read little-endian are 0xAARRGGBB.
-        _pixels = MemoryMarshal.Cast<byte, uint>(data.DetachPixelData()).ToArray();
-        _pixelsPath = path;
-        _pixelsSize = size;
-        return _pixels;
+        return MemoryMarshal.Cast<byte, uint>(data.DetachPixelData()).ToArray();
     }
 
     /// <summary>The accent color, in the shade Windows uses on that taskbar for badges.</summary>

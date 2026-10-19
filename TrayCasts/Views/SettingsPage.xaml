@@ -95,6 +95,28 @@
                         OnContent=""
                         Toggled="BadgeToggle_Toggled" />
                 </Grid>
+                <Grid ColumnSpacing="12" Style="{StaticResource SettingsCardStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="Show the podcast art on the tray icon" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="Replaces the icon with the show's artwork while an episode plays."
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ToggleSwitch
+                        x:Name="ArtToggle"
+                        Grid.Column="1"
+                        MinWidth="0"
+                        AutomationProperties.Name="Show the podcast art on the tray icon"
+                        OffContent=""
+                        OnContent=""
+                        Toggled="ArtToggle_Toggled" />
+                </Grid>
 
                 <TextBlock
                     Margin="0,16,0,4"

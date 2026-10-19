@@ -59,6 +59,13 @@ internal static class SettingsService
         set => Set(nameof(ShowNewEpisodeBadge), value);
     }
 
+    /// <summary>Opt-in: shows the playing podcast's artwork as the tray icon while it plays.</summary>
+    public static bool ShowArtOnTrayIcon
+    {
+        get => Get(nameof(ShowArtOnTrayIcon), false);
+        set => Set(nameof(ShowArtOnTrayIcon), value);
+    }
+
     /// <summary>New episodes found in the background since the flyout was last opened.</summary>
     public static int NewEpisodeCount
     {

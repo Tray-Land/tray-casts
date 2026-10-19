@@ -27,6 +27,7 @@ public partial class App : Application
     private RegisteredWaitHandle? _showWait;
     private TrayIcon? _trayIcon;
     private readonly TrayBadge _badge = new();
+    private string? _shownArtUrl; // The artwork currently on the tray icon, so state changes only redraw when it differs.
     private NewEpisodeMonitor? _newEpisodes;
     private TrayFlyoutWindow? _flyout;
     private DispatcherQueue? _dispatcher;
@@ -75,7 +76,14 @@ public partial class App : Application
 
         InitializeTrayIcon();
         PlaybackService.Initialize(_dispatcher);
-        PlaybackService.StateChanged += (_, _) => SetTrayStatus(PlaybackService.TrayStatus(MaxTooltipLength - DisplayName.Length - 1));
+        PlaybackService.StateChanged += (_, _) =>
+        {
+            SetTrayStatus(PlaybackService.TrayStatus(MaxTooltipLength - DisplayName.Length - 1));
+            if (PlayingArtUrl() != _shownArtUrl)
+            {
+                UpdateTrayIcon();
+            }
+        };
 
         _newEpisodes = new NewEpisodeMonitor(_dispatcher, () => _flyout?.IsPopupVisible == true, UpdateTrayIcon);
         if (SettingsService.ShowNewEpisodeBadge)
@@ -185,9 +193,21 @@ public partial class App : Application
     {
         if (_trayIcon is not null)
         {
-            _badge.Update(_trayIcon, TrayIconPath, SettingsService.ShowNewEpisodeBadge ? SettingsService.NewEpisodeCount : 0);
+            _shownArtUrl = PlayingArtUrl();
+            _badge.Update(_trayIcon, TrayIconPath, SettingsService.ShowNewEpisodeBadge ? SettingsService.NewEpisodeCount : 0, _shownArtUrl);
             ResendTooltip();
         }
+    }
+
+    /// <summary>The artwork to show on the tray icon: the playing show's, only while it plays and the option is on.</summary>
+    private static string? PlayingArtUrl() =>
+        SettingsService.ShowArtOnTrayIcon && PlaybackService.IsPlaying ? PlaybackService.Current?.ArtworkUrl : null;
+
+    /// <summary>Turns the playing show's artwork on the tray icon on or off (Settings).</summary>
+    public void SetArtOnTrayIcon(bool enabled)
+    {
+        SettingsService.ShowArtOnTrayIcon = enabled;
+        UpdateTrayIcon();
     }
 
     /// <summary>

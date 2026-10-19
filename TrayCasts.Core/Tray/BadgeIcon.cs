@@ -46,13 +46,18 @@ public static class BadgeIcon
 
     /// <param name="icon">The app icon, <paramref name="size"/> squared pixels as 0xAARRGGBB (straight alpha), row-major top-down.</param>
     /// <param name="size">Icon width and height in pixels (8-255).</param>
-    /// <param name="count">New episodes; 1 or more.</param>
+    /// <param name="count">New episodes; with none, the icon is encoded as it is.</param>
     /// <param name="badge">Badge color as 0xAARRGGBB.</param>
     public static byte[] Create(ReadOnlySpan<uint> icon, int size, int count, uint badge)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(size, 8);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(size, 255);
         ArgumentOutOfRangeException.ThrowIfNotEqual(icon.Length, size * size, nameof(icon));
+
+        if (count <= 0)
+        {
+            return Encode(icon.ToArray(), size);
+        }
 
         byte[][] glyphs = [.. Label(count).Select(c => c == '+' ? Plus : Digits[c - '0'])];
         int scale = Math.Max(1, size / 16);

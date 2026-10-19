@@ -28,6 +28,7 @@ public sealed partial class SettingsPage : Page
         FillSeconds(SkipForwardCombo, PlaybackPolicy.SkipForwardChoices, SettingsService.SkipForwardSeconds);
         AutoPlayToggle.IsOn = SettingsService.AutoPlayNext;
         BadgeToggle.IsOn = SettingsService.ShowNewEpisodeBadge;
+        ArtToggle.IsOn = SettingsService.ShowArtOnTrayIcon;
         _loading = false;
     }
 
@@ -111,6 +112,14 @@ public sealed partial class SettingsPage : Page
         if (!_loading)
         {
             App.Current.SetNewEpisodeBadge(BadgeToggle.IsOn);
+        }
+    }
+
+    private void ArtToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_loading)
+        {
+            App.Current.SetArtOnTrayIcon(ArtToggle.IsOn);
         }
     }
 
