@@ -66,10 +66,17 @@ public static class EpisodeFormat
     public static string Meta(params string?[] parts) =>
         string.Join(" · ", parts.Where(p => !string.IsNullOrWhiteSpace(p)));
 
-    /// <summary>The tray tooltip's second line, e.g. "Playing: Episode 12 — Show".</summary>
+    /// <summary>
+    /// The tray tooltip's second line, e.g. "Playing: Show — Episode 12". The podcast name comes
+    /// first and is kept whole; a long episode title is what gets truncated.
+    /// </summary>
     public static string TrayStatus(NowPlaying nowPlaying, bool isPlaying, int maxLength)
     {
-        string text = $"{(isPlaying ? "Playing" : "Paused")}: {nowPlaying.Episode.Title} — {nowPlaying.ShowTitle}";
-        return text.Length <= maxLength ? text : text[..Math.Max(0, maxLength - 1)] + "…";
+        string lead = $"{(isPlaying ? "Playing" : "Paused")}: {nowPlaying.ShowTitle}";
+        string text = $"{lead} — {nowPlaying.Episode.Title}";
+        return text.Length <= maxLength ? text : Truncate(text, maxLength);
     }
+
+    private static string Truncate(string text, int maxLength) =>
+        text[..Math.Max(0, maxLength - 1)] + "…";
 }

@@ -153,4 +153,19 @@ public sealed class EpisodeFormatTests
         Assert.StartsWith("Playing: ", status);
         Assert.EndsWith("…", status);
     }
+
+    [TestMethod]
+    public void TrayStatus_ShowsPodcastNameFirst()
+    {
+        NowPlaying np = new()
+        {
+            FeedUrl = "f",
+            ShowTitle = "My Show",
+            Episode = new Episode { Id = "1", Title = new string('x', 200), AudioUrl = "https://x.test/a.mp3" },
+        };
+
+        string status = EpisodeFormat.TrayStatus(np, isPlaying: true, maxLength: 100);
+
+        Assert.StartsWith("Playing: My Show — ", status);
+    }
 }

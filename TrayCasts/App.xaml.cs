@@ -149,6 +149,7 @@ public partial class App : Application
         };
         _trayIcon.ContextMenu += TrayIcon_ContextMenu;
         _trayIcon.IsVisible = true;
+        ResendTooltip();
         WindowPlacementService.SetTrayIcon(_trayIcon);
         SystemThemeService.Changed += (_, _) => _dispatcher?.TryEnqueue(UpdateTrayIcon);
     }
@@ -185,7 +186,24 @@ public partial class App : Application
         if (_trayIcon is not null)
         {
             _badge.Update(_trayIcon, TrayIconPath, SettingsService.ShowNewEpisodeBadge ? SettingsService.NewEpisodeCount : 0);
+            ResendTooltip();
         }
+    }
+
+    /// <summary>
+    /// WinUIEx skips the shell update when the tooltip is unchanged, so flip it to a different
+    /// value and back to make the shell receive the text again after the icon was added or replaced.
+    /// </summary>
+    private void ResendTooltip()
+    {
+        if (_trayIcon is null)
+        {
+            return;
+        }
+
+        string tooltip = _trayIcon.Tooltip ?? DisplayName;
+        _trayIcon.Tooltip = tooltip + " ";
+        _trayIcon.Tooltip = tooltip;
     }
 
     // A white glyph disappears on a light taskbar, which follows the Windows theme, not the app theme.
