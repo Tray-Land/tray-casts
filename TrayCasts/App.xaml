@@ -14,11 +14,47 @@
                 x:Key="FlyoutIconButtonStyle"
                 BasedOn="{StaticResource DefaultButtonStyle}"
                 TargetType="Button">
-                <Setter Property="Width" Value="36" />
-                <Setter Property="Height" Value="32" />
+                <Setter Property="Width" Value="40" />
+                <Setter Property="Height" Value="36" />
                 <Setter Property="Padding" Value="0" />
-                <Setter Property="Background" Value="Transparent" />
-                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <!--  Transparent at rest, filled on hover and press, like the system subtle button.  -->
+                        <ControlTemplate TargetType="Button">
+                            <ContentPresenter
+                                x:Name="ContentPresenter"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
+                                AutomationProperties.AccessibilityView="Raw"
+                                Background="{ThemeResource SubtleFillColorTransparentBrush}"
+                                BackgroundSizing="OuterBorderEdge"
+                                CornerRadius="{TemplateBinding CornerRadius}"
+                                Foreground="{TemplateBinding Foreground}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="ContentPresenter.Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="ContentPresenter.Background" Value="{ThemeResource SubtleFillColorTertiaryBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource ButtonForegroundDisabled}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                            </ContentPresenter>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
         </ResourceDictionary>
     </Application.Resources>
