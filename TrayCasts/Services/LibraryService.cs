@@ -48,7 +48,7 @@ internal static class LibraryService
     /// <summary>Follows a show, fetching it first so a bad URL fails here rather than later.</summary>
     public static async Task<Subscription> SubscribeAsync(string feedUrl, CancellationToken cancellationToken)
     {
-        if (Library.Find(feedUrl) is { } existing)
+        if (Library.Find(feedUrl) is { IsFollowed: true } existing)
         {
             return existing;
         }
@@ -56,16 +56,61 @@ internal static class LibraryService
         FeedFetchResult fetch = await Feeds.FetchAsync(feedUrl, null, null, cancellationToken);
 
         // Another add of the same show may have finished during the await.
-        if (Library.Find(feedUrl) is { } raced)
+        if (Library.Find(feedUrl) is { IsFollowed: true } raced)
         {
             return raced;
         }
 
         Subscription subscription = LibraryOps.CreateSubscription(feedUrl, fetch, DateTimeOffset.UtcNow);
+        if (Library.Find(feedUrl) is { } saved)
+        {
+            // Following a show kept for saved episodes replaces it; its progress stays.
+            Library.Subscriptions.Remove(saved);
+        }
+
         Library.Subscriptions.Add(subscription);
         await SaveLibraryAsync();
         RaiseChanged();
         return subscription;
+    }
+
+    /// <summary>
+    /// Reads a show's feed to look through it without following it. A followed show is returned as
+    /// it is. The preview isn't kept anywhere, so closing its page frees it.
+    /// </summary>
+    public static async Task<Subscription> PreviewAsync(string feedUrl, CancellationToken cancellationToken)
+    {
+        if (Library.Find(feedUrl) is { IsFollowed: true } followed)
+        {
+            return followed;
+        }
+
+        FeedFetchResult fetch = await Feeds.FetchAsync(feedUrl, null, null, cancellationToken);
+        return LibraryOps.CreatePreview(feedUrl, fetch, DateTimeOffset.UtcNow);
+    }
+
+    public static bool IsEpisodeSaved(string feedUrl, string episodeId) =>
+        LibraryOps.IsEpisodeSaved(Library, feedUrl, episodeId);
+
+    /// <summary>Saves one episode of a show that isn't followed, or forgets it when it already is saved.</summary>
+    public static void ToggleSavedEpisode(Subscription source, Episode episode)
+    {
+        if (IsEpisodeSaved(source.FeedUrl, episode.Id))
+        {
+            if (LibraryOps.RemoveSavedEpisode(Library, source.FeedUrl, episode.Id)
+                && PlaybackService.Current?.FeedUrl != source.FeedUrl
+                && Progress.RemoveFeed(source.FeedUrl) > 0)
+            {
+                _ = LibraryStore.SaveAsync(ProgressPath, Progress, CoreJsonContext.Default.ProgressBook);
+            }
+        }
+        else if (!LibraryOps.SaveEpisode(Library, source, episode, DateTimeOffset.UtcNow))
+        {
+            return;
+        }
+
+        _ = SaveLibraryAsync();
+        RaiseChanged();
     }
 
     public static void Unsubscribe(Subscription subscription)
@@ -111,7 +156,7 @@ internal static class LibraryService
     /// </summary>
     public static async Task<RefreshOutcome> RefreshAllAsync(CancellationToken cancellationToken)
     {
-        List<Subscription> shows = [.. Library.Subscriptions];
+        List<Subscription> shows = [.. Library.Subscriptions.Where(s => s.IsFollowed)];
         if (shows.Count == 0)
         {
             return new RefreshOutcome(0, 0, null);
@@ -173,7 +218,7 @@ internal static class LibraryService
             feeds = await Task.Run(() => Opml.Read(stream), cancellationToken);
         }
 
-        List<OpmlFeed> missing = [.. feeds.Where(f => Library.Find(f.FeedUrl) is null)];
+        List<OpmlFeed> missing = [.. feeds.Where(f => Library.Find(f.FeedUrl) is not { IsFollowed: true })];
         using SemaphoreSlim gate = new(MaxConcurrentFetches);
         int added = 0;
         int failed = 0;
@@ -187,8 +232,13 @@ internal static class LibraryService
                 try
                 {
                     FeedFetchResult fetch = await Feeds.FetchAsync(feed.FeedUrl, null, null, cancellationToken);
-                    if (Library.Find(feed.FeedUrl) is null)
+                    if (Library.Find(feed.FeedUrl) is not { IsFollowed: true })
                     {
+                        if (Library.Find(feed.FeedUrl) is { } saved)
+                        {
+                            Library.Subscriptions.Remove(saved);
+                        }
+
                         Library.Subscriptions.Add(LibraryOps.CreateSubscription(feed.FeedUrl, fetch, DateTimeOffset.UtcNow));
                         added++;
                     }
@@ -219,7 +269,7 @@ internal static class LibraryService
     /// <summary>Writes the followed shows to an OPML file, for another podcast app or a backup.</summary>
     public static async Task<int> ExportOpmlAsync(string path)
     {
-        List<Subscription> shows = [.. Library.Subscriptions.OrderBy(s => s.Title, StringComparer.CurrentCultureIgnoreCase)];
+        List<Subscription> shows = [.. Library.Subscriptions.Where(s => s.IsFollowed).OrderBy(s => s.Title, StringComparer.CurrentCultureIgnoreCase)];
         await Task.Run(() =>
         {
             using FileStream stream = File.Create(path);

@@ -65,6 +65,9 @@ public sealed partial class FlyoutPage : Page, IDisposable
 
     private View _view = View.Browse;
     private Subscription? _openShow;
+
+    // The stand-in shown while an unfollowed show's feed is being read.
+    private Subscription? _loadingShow;
     private EpisodeOrder _openShowOrder;
     private bool _updatingShowOptions;
     private int _renderedVersion = -1;
@@ -312,9 +315,21 @@ public sealed partial class FlyoutPage : Page, IDisposable
 
         if (_view == View.Show)
         {
-            // The open show may have been refreshed (a new object) or unfollowed elsewhere.
-            if (_openShow is not null && library.Find(_openShow.FeedUrl) is { } show)
+            if (_openShow is { IsFollowed: false } preview)
             {
+                // Followed from here, the page becomes the followed show's; otherwise only the add/remove marks change.
+                if (library.Find(preview.FeedUrl) is { IsFollowed: true } followed)
+                {
+                    OpenShow(followed);
+                }
+                else
+                {
+                    RefreshEpisodeStates();
+                }
+            }
+            else if (_openShow is not null && library.Find(_openShow.FeedUrl) is { } show)
+            {
+                // The open show may have been refreshed (a new object) or unfollowed elsewhere.
                 OpenShow(show);
             }
             else
@@ -360,6 +375,64 @@ public sealed partial class FlyoutPage : Page, IDisposable
         SetView(BrowsePanel, App.DisplayName, animate);
     }
 
+    /// <summary>
+    /// Goes to a show's page. A followed show opens at once; one that isn't (kept only for saved
+    /// episodes) is read from its feed so every episode can be looked through.
+    /// </summary>
+    private void GoToShow(Subscription show)
+    {
+        if (show.IsFollowed)
+        {
+            OpenShow(show);
+        }
+        else
+        {
+            _ = OpenPreviewAsync(show);
+        }
+    }
+
+    private async Task OpenPreviewAsync(Subscription listed)
+    {
+        // The header is up straight away; the episodes follow once the feed has been read.
+        Subscription loading = new()
+        {
+            FeedUrl = listed.FeedUrl,
+            Title = listed.Title,
+            Author = listed.Author,
+            ArtworkUrl = listed.ArtworkUrl,
+            IsFollowed = false,
+        };
+        _loadingShow = loading;
+        OpenShow(loading);
+        SetLoading(true);
+        try
+        {
+            Subscription show = await LibraryService.PreviewAsync(listed.FeedUrl, _lifetime.Token);
+            if (ReferenceEquals(_openShow, loading))
+            {
+                _loadingShow = null;
+                StatusBar.IsOpen = false;
+                OpenShow(show);
+            }
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            if (ReferenceEquals(_openShow, loading))
+            {
+                ShowBrowse();
+            }
+
+            ShowNetworkProblem($"Can't load {listed.Title}", ex);
+        }
+        finally
+        {
+            SetLoading(false);
+        }
+    }
+
     private void OpenShow(Subscription show)
     {
         bool sameShow = _view == View.Show && _openShow?.FeedUrl == show.FeedUrl && _openShowOrder == show.Order;
@@ -373,12 +446,21 @@ public sealed partial class FlyoutPage : Page, IDisposable
             _showEpisodes.Add(new EpisodeItem(show, episode, includeShowName: false, _art));
         }
 
-        UpdateShowOptions(show);
+        bool followed = show.IsFollowed;
+        bool loading = ReferenceEquals(show, _loadingShow);
+        FollowButton.Visibility = followed ? Visibility.Collapsed : Visibility.Visible;
+        FollowButton.IsEnabled = !loading;
+        ShowOptionsButton.Visibility = followed ? Visibility.Visible : Visibility.Collapsed;
+        UnfollowButton.Visibility = followed ? Visibility.Visible : Visibility.Collapsed;
+        if (followed)
+        {
+            UpdateShowOptions(show);
+        }
 
         ShowArt.Source = _art.Get(show.ArtworkUrl, 56);
         ShowAuthorText.Text = show.Author ?? string.Empty;
         ShowAuthorText.Visibility = show.Author is null ? Visibility.Collapsed : Visibility.Visible;
-        ShowCountText.Text = show.Episodes.Count == 1 ? "1 episode" : $"{show.Episodes.Count} episodes";
+        ShowCountText.Text = loading ? "Loading…" : show.Episodes.Count == 1 ? "1 episode" : $"{show.Episodes.Count} episodes";
         UnfollowPrompt.Text = $"Unfollow {show.Title}?";
         SetView(ShowPanel, show.Title);
 
@@ -814,7 +896,7 @@ public sealed partial class FlyoutPage : Page, IDisposable
         if (_view == View.Browse)
         {
             MenuFlyoutItem show = new() { Text = "Go to show", Icon = new FontIcon { Glyph = "" } };
-            show.Click += (_, _) => OpenShow(item.Show);
+            show.Click += (_, _) => GoToShow(item.Show);
             menu.Items.Add(show);
         }
 
@@ -886,7 +968,7 @@ public sealed partial class FlyoutPage : Page, IDisposable
         if (FeedUrlPolicy.TryNormalize(term, out string feedUrl))
         {
             PodcastSearchResult direct = new(feedUrl, "RSS feed", feedUrl, null, null);
-            _results.Add(new SearchItem(direct, LibraryService.Library.Find(feedUrl) is not null, _art));
+            _results.Add(new SearchItem(direct, LibraryService.Library.Find(feedUrl) is { IsFollowed: true }, _art));
             SearchStatusText.Text = "Press Enter or select the feed to follow it.";
             return;
         }
@@ -905,7 +987,7 @@ public sealed partial class FlyoutPage : Page, IDisposable
 
             foreach (PodcastSearchResult result in found)
             {
-                _results.Add(new SearchItem(result, LibraryService.Library.Find(result.FeedUrl) is not null, _art));
+                _results.Add(new SearchItem(result, LibraryService.Library.Find(result.FeedUrl) is { IsFollowed: true }, _art));
             }
 
             SearchStatusText.Text = found.Count == 0
@@ -933,9 +1015,72 @@ public sealed partial class FlyoutPage : Page, IDisposable
         }
     }
 
+    // A row opens the show's page to look through; only its + button follows it outright.
     private void SearchList_ItemClick(object sender, ItemClickEventArgs e)
     {
-        if (e.ClickedItem is SearchItem item)
+        if (e.ClickedItem is not SearchItem item)
+        {
+            return;
+        }
+
+        if (LibraryService.Library.Find(item.Result.FeedUrl) is { IsFollowed: true } followed)
+        {
+            OpenShow(followed);
+        }
+        else
+        {
+            _ = OpenPreviewAsync(new Subscription
+            {
+                FeedUrl = item.Result.FeedUrl,
+                Title = item.Result.Title,
+                Author = item.Result.Author,
+                ArtworkUrl = item.Result.ArtworkUrl,
+                IsFollowed = false,
+            });
+        }
+    }
+
+    private void FollowButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_openShow is { IsFollowed: false } show && !ReferenceEquals(show, _loadingShow))
+        {
+            _ = FollowOpenShowAsync(show);
+        }
+    }
+
+    // Following replaces the page with the followed show's once the library changes (see RenderLibrary).
+    private async Task FollowOpenShowAsync(Subscription show)
+    {
+        FollowButton.IsEnabled = false;
+        try
+        {
+            await LibraryService.SubscribeAsync(show.FeedUrl, _lifetime.Token);
+            StatusBar.IsOpen = false;
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            ShowNetworkProblem($"Can't follow {show.Title}", ex);
+        }
+        finally
+        {
+            FollowButton.IsEnabled = true;
+        }
+    }
+
+    private void EpisodeSaveButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).Tag is EpisodeItem item)
+        {
+            LibraryService.ToggleSavedEpisode(item.Show, item.Episode);
+        }
+    }
+
+    private void SearchFollowButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).Tag is SearchItem item)
         {
             _ = FollowAsync(item);
         }
@@ -948,7 +1093,7 @@ public sealed partial class FlyoutPage : Page, IDisposable
             return;
         }
 
-        if (LibraryService.Library.Find(item.Result.FeedUrl) is { } existing)
+        if (LibraryService.Library.Find(item.Result.FeedUrl) is { IsFollowed: true } existing)
         {
             OpenShow(existing);
             return;
@@ -957,13 +1102,9 @@ public sealed partial class FlyoutPage : Page, IDisposable
         item.IsBusy = true;
         try
         {
-            Subscription show = await LibraryService.SubscribeAsync(item.Result.FeedUrl, _lifetime.Token);
+            await LibraryService.SubscribeAsync(item.Result.FeedUrl, _lifetime.Token);
             item.IsSubscribed = true;
             StatusBar.IsOpen = false;
-            if (_view == View.Add)
-            {
-                OpenShow(show);
-            }
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
         {
@@ -1034,11 +1175,10 @@ public sealed partial class FlyoutPage : Page, IDisposable
         FullTitle.Text = episode.Title;
         ToolTipService.SetToolTip(FullTitle, episode.Title);
 
-        // Only a followed show has a page to go to; an episode can outlive its unfollowed show.
+        // A show that isn't in the library opens as a preview read from its feed.
         FullShowText.Text = current.ShowTitle;
         Subscription? show = LibraryService.Library.Find(current.FeedUrl);
-        FullShowLink.IsEnabled = show is not null;
-        AutomationPropertiesHelper.SetNameAndTip(FullShowLink, show is null ? current.ShowTitle : $"Go to {current.ShowTitle}");
+        AutomationPropertiesHelper.SetNameAndTip(FullShowLink, $"Go to {current.ShowTitle}");
 
         FullMeta.Text = EpisodeFormat.Meta(
             show?.Author,
@@ -1058,10 +1198,18 @@ public sealed partial class FlyoutPage : Page, IDisposable
 
     private void FullShowLink_Click(object sender, RoutedEventArgs e)
     {
-        if (PlaybackService.Current is { } current && LibraryService.Library.Find(current.FeedUrl) is { } show)
+        if (PlaybackService.Current is not { } current)
         {
-            OpenShow(show);
+            return;
         }
+
+        GoToShow(LibraryService.Library.Find(current.FeedUrl) ?? new Subscription
+        {
+            FeedUrl = current.FeedUrl,
+            Title = current.ShowTitle,
+            ArtworkUrl = current.ShowArtworkUrl,
+            IsFollowed = false,
+        });
     }
 
     private void UpdatePosition()

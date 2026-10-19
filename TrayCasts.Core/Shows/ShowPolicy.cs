@@ -43,6 +43,12 @@ public static class ShowPolicy
     /// </summary>
     public static IEnumerable<Episode> UpNext(Subscription show, Func<Episode, bool> isPlayed)
     {
+        // A show kept for saved episodes offers exactly those, whatever their order or limit.
+        if (!show.IsFollowed)
+        {
+            return show.Episodes;
+        }
+
         // Stored newest first; undated episodes are at the end, so they count as the oldest.
         IEnumerable<Episode> backlog = show.Episodes.AsEnumerable().Reverse().Where(e => !isPlayed(e));
         IEnumerable<Episode> queue = SanitizeOrder(show.Order) switch
@@ -67,7 +73,7 @@ public static class ShowPolicy
     /// line appears with the show's recent activity instead of sinking below every other show.
     /// </summary>
     public static DateTimeOffset LatestSortKey(Subscription show, Episode episode) =>
-        SanitizeOrder(show.Order) == EpisodeOrder.NewestFirst || show.Episodes.Count == 0
+        !show.IsFollowed || SanitizeOrder(show.Order) == EpisodeOrder.NewestFirst || show.Episodes.Count == 0
             ? episode.Published ?? DateTimeOffset.MinValue
             : show.Episodes[0].Published ?? DateTimeOffset.MinValue;
 }

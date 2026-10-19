@@ -23,6 +23,70 @@ public static class LibraryOps
         return subscription;
     }
 
+    /// <summary>
+    /// A show as found in its feed, to look through before following or saving anything from it.
+    /// Not part of the library; every episode is listed, as for a show heard newest first.
+    /// </summary>
+    public static Subscription CreatePreview(string feedUrl, FeedFetchResult fetch, DateTimeOffset now)
+    {
+        Subscription preview = CreateSubscription(feedUrl, fetch, now);
+        preview.IsFollowed = false;
+        preview.EpisodeLimit = null;
+        return preview;
+    }
+
+    /// <summary>Whether this one episode has been saved without following its show.</summary>
+    public static bool IsEpisodeSaved(Library library, string feedUrl, string episodeId) =>
+        library.Find(feedUrl) is { IsFollowed: false } show && show.Episodes.Any(e => e.Id == episodeId);
+
+    /// <summary>
+    /// Saves one episode of a show the user doesn't follow. The show is kept, with just its saved
+    /// episodes, so they can be listed and played without it. A followed show already offers its
+    /// episodes, so nothing changes for it.
+    /// </summary>
+    /// <returns>True when the library changed.</returns>
+    public static bool SaveEpisode(Library library, Subscription source, Episode episode, DateTimeOffset now)
+    {
+        Subscription? kept = library.Find(source.FeedUrl);
+        if (kept is { IsFollowed: true } || (kept is not null && kept.Episodes.Any(e => e.Id == episode.Id)))
+        {
+            return false;
+        }
+
+        if (kept is null)
+        {
+            kept = new Subscription
+            {
+                FeedUrl = source.FeedUrl,
+                Title = source.Title,
+                Author = source.Author,
+                ArtworkUrl = source.ArtworkUrl,
+                AddedUtc = now,
+                IsFollowed = false,
+            };
+            library.Subscriptions.Add(kept);
+        }
+
+        // Newest first, undated last, like every stored episode list.
+        kept.Episodes = [.. kept.Episodes.Append(episode).OrderByDescending(e => e.Published ?? DateTimeOffset.MinValue)];
+        return true;
+    }
+
+    /// <summary>
+    /// Forgets a saved episode; the show goes with its last one.
+    /// </summary>
+    /// <returns>True when the show itself was removed, so its progress can be dropped too.</returns>
+    public static bool RemoveSavedEpisode(Library library, string feedUrl, string episodeId)
+    {
+        if (library.Find(feedUrl) is not { IsFollowed: false } kept)
+        {
+            return false;
+        }
+
+        kept.Episodes = [.. kept.Episodes.Where(e => e.Id != episodeId)];
+        return kept.Episodes.Count == 0 && library.Subscriptions.Remove(kept);
+    }
+
     /// <summary>Applies a fetch to a subscription. A 304 only updates the check time.</summary>
     /// <returns>How many episodes are new releases (see <see cref="CountNewReleases"/>).</returns>
     public static int Apply(Subscription subscription, FeedFetchResult fetch, DateTimeOffset now)
@@ -124,6 +188,7 @@ public static class LibraryOps
     public static List<Subscription> ShowsByRecentActivity(IEnumerable<Subscription> subscriptions) =>
     [
         .. subscriptions
+            .Where(s => s.IsFollowed)
             .OrderByDescending(s => s.Episodes.Count > 0 ? s.Episodes.Max(e => e.Published ?? DateTimeOffset.MinValue) : DateTimeOffset.MinValue)
             .ThenBy(s => s.Title, StringComparer.CurrentCultureIgnoreCase),
     ];

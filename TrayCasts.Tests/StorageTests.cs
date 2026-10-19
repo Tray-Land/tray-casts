@@ -212,6 +212,77 @@ public sealed class StorageTests
         CollectionAssert.AreEqual(new[] { fresh, old, empty }, sorted);
     }
 
+    [TestMethod]
+    public void SaveEpisode_KeepsTheShowWithJustThatEpisode()
+    {
+        Library library = new();
+        Subscription preview = Show("https://p.test/rss", ("a", 1), ("b", 2), ("c", 3));
+
+        bool changed = LibraryOps.SaveEpisode(library, preview, preview.Episodes[1], DateTimeOffset.UtcNow);
+
+        Assert.IsTrue(changed);
+        Subscription kept = library.Find("https://p.test/rss")!;
+        Assert.IsFalse(kept.IsFollowed);
+        CollectionAssert.AreEqual(new[] { "b" }, kept.Episodes.Select(e => e.Id).ToArray());
+        Assert.IsTrue(LibraryOps.IsEpisodeSaved(library, kept.FeedUrl, "b"));
+        Assert.IsFalse(LibraryOps.IsEpisodeSaved(library, kept.FeedUrl, "a"));
+    }
+
+    [TestMethod]
+    public void SaveEpisode_KeepsSavedEpisodesNewestFirst()
+    {
+        Library library = new();
+        Subscription preview = Show("https://p.test/rss", ("a", 1), ("b", 2), ("c", 3));
+
+        LibraryOps.SaveEpisode(library, preview, preview.Episodes[0], DateTimeOffset.UtcNow);
+        LibraryOps.SaveEpisode(library, preview, preview.Episodes[2], DateTimeOffset.UtcNow);
+        LibraryOps.SaveEpisode(library, preview, preview.Episodes[2], DateTimeOffset.UtcNow);
+
+        CollectionAssert.AreEqual(new[] { "c", "a" }, library.Find(preview.FeedUrl)!.Episodes.Select(e => e.Id).ToArray());
+    }
+
+    [TestMethod]
+    public void SaveEpisode_FollowedShow_ChangesNothing()
+    {
+        Subscription followed = Show("https://f.test/rss", ("a", 1), ("b", 2));
+        Library library = new() { Subscriptions = [followed] };
+
+        bool changed = LibraryOps.SaveEpisode(library, followed, followed.Episodes[0], DateTimeOffset.UtcNow);
+
+        Assert.IsFalse(changed);
+        Assert.HasCount(2, followed.Episodes);
+        Assert.IsFalse(LibraryOps.IsEpisodeSaved(library, followed.FeedUrl, "a"));
+    }
+
+    [TestMethod]
+    public void RemoveSavedEpisode_DropsTheShowWithItsLastEpisode()
+    {
+        Library library = new();
+        Subscription preview = Show("https://p.test/rss", ("a", 1), ("b", 2));
+        LibraryOps.SaveEpisode(library, preview, preview.Episodes[0], DateTimeOffset.UtcNow);
+        LibraryOps.SaveEpisode(library, preview, preview.Episodes[1], DateTimeOffset.UtcNow);
+
+        Assert.IsFalse(LibraryOps.RemoveSavedEpisode(library, preview.FeedUrl, "a"));
+        Assert.HasCount(1, library.Subscriptions);
+
+        Assert.IsTrue(LibraryOps.RemoveSavedEpisode(library, preview.FeedUrl, "b"));
+        Assert.IsEmpty(library.Subscriptions);
+    }
+
+    [TestMethod]
+    public void Latest_ShowsSavedEpisodesOfAnUnfollowedShow_AndShowsListSkipsIt()
+    {
+        Subscription followed = Show("https://f.test/rss", ("f1", 5));
+        Subscription saved = Show("https://s.test/rss", ("s1", 9), ("s2", 8));
+        saved.IsFollowed = false;
+        saved.EpisodeLimit = 1; // A limit belongs to a followed show.
+
+        List<ShowEpisode> latest = LibraryOps.Latest([followed, saved], new ProgressBook(), 10);
+
+        CollectionAssert.AreEqual(new[] { "s1", "s2", "f1" }, latest.Select(x => x.Episode.Id).ToArray());
+        CollectionAssert.AreEqual(new[] { followed }, LibraryOps.ShowsByRecentActivity([followed, saved]));
+    }
+
     private static Subscription Show(string feedUrl, params (string Id, int Day)[] episodes) => new()
     {
         FeedUrl = feedUrl,

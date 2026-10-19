@@ -72,6 +72,8 @@ public sealed class EpisodeItem : ObservableItem
     private Visibility _nowPlayingVisibility = Visibility.Collapsed;
     private string _nowPlayingGlyph = "";
     private string _accessibleName = string.Empty;
+    private string _saveGlyph = "";
+    private string _saveLabel = "Add episode";
 
     internal EpisodeItem(Subscription show, Episode episode, bool includeShowName, ArtworkCache art)
     {
@@ -112,12 +114,23 @@ public sealed class EpisodeItem : ObservableItem
 
     public string AccessibleName { get => _accessibleName; private set => Set(ref _accessibleName, value); }
 
+    /// <summary>Only an episode of a show that isn't followed is added or removed by itself.</summary>
+    public Visibility SaveVisibility => Show.IsFollowed ? Visibility.Collapsed : Visibility.Visible;
+
+    public string SaveGlyph { get => _saveGlyph; private set => Set(ref _saveGlyph, value); }
+
+    public string SaveLabel { get => _saveLabel; private set => Set(ref _saveLabel, value); }
+
     public bool IsPlayed { get; private set; }
 
     public bool IsCurrent { get; private set; }
 
     public void Refresh()
     {
+        bool saved = !Show.IsFollowed && LibraryService.IsEpisodeSaved(Show.FeedUrl, Episode.Id);
+        SaveGlyph = saved ? "" : "";
+        SaveLabel = saved ? "Remove episode" : "Add episode";
+
         EpisodeProgress? progress = LibraryService.GetProgress(Show.FeedUrl, Episode.Id);
         IsCurrent = PlaybackService.IsCurrent(Show.FeedUrl, Episode.Id);
         IsPlayed = progress?.IsPlayed == true;

@@ -55,7 +55,7 @@
                             FontSize="16"
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                             Glyph="&#xE8D6;" />
-                        <Image Source="{x:Bind Artwork}" Stretch="UniformToFill" />
+                        <Image Source="{x:Bind Artwork}" Stretch="Uniform" />
                     </Grid>
                 </Border>
                 <StackPanel
@@ -80,21 +80,38 @@
                         Visibility="{x:Bind ProgressVisibility, Mode=OneWay}"
                         Value="{x:Bind Progress, Mode=OneWay}" />
                 </StackPanel>
-                <Grid
+                <StackPanel
                     Grid.Column="2"
-                    Width="24"
-                    VerticalAlignment="Center">
-                    <FontIcon
-                        FontSize="14"
-                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                        Glyph="&#xE768;"
-                        Visibility="{x:Bind PlayGlyphVisibility, Mode=OneWay}" />
-                    <FontIcon
-                        FontSize="16"
-                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                        Glyph="{x:Bind NowPlayingGlyph, Mode=OneWay}"
-                        Visibility="{x:Bind NowPlayingVisibility, Mode=OneWay}" />
-                </Grid>
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal"
+                    Spacing="4">
+                    <!--  Only for a show that isn't followed: add or remove just this episode  -->
+                    <Button
+                        AutomationProperties.AccessibilityView="Raw"
+                        Click="EpisodeSaveButton_Click"
+                        IsTabStop="False"
+                        Style="{StaticResource FlyoutIconButtonStyle}"
+                        Tag="{x:Bind}"
+                        ToolTipService.ToolTip="{x:Bind SaveLabel, Mode=OneWay}"
+                        Visibility="{x:Bind SaveVisibility}">
+                        <FontIcon
+                            FontSize="18"
+                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                            Glyph="{x:Bind SaveGlyph, Mode=OneWay}" />
+                    </Button>
+                    <Grid Width="24" VerticalAlignment="Center">
+                        <FontIcon
+                            FontSize="14"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Glyph="&#xE768;"
+                            Visibility="{x:Bind PlayGlyphVisibility, Mode=OneWay}" />
+                        <FontIcon
+                            FontSize="16"
+                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                            Glyph="{x:Bind NowPlayingGlyph, Mode=OneWay}"
+                            Visibility="{x:Bind NowPlayingVisibility, Mode=OneWay}" />
+                    </Grid>
+                </StackPanel>
             </Grid>
         </DataTemplate>
 
@@ -117,7 +134,7 @@
                             FontSize="18"
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                             Glyph="&#xE8D6;" />
-                        <Image Source="{x:Bind Artwork}" Stretch="UniformToFill" />
+                        <Image Source="{x:Bind Artwork}" Stretch="Uniform" />
                     </Grid>
                 </Border>
                 <StackPanel
@@ -163,7 +180,7 @@
                             FontSize="16"
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                             Glyph="&#xE8D6;" />
-                        <Image Source="{x:Bind Artwork}" Stretch="UniformToFill" />
+                        <Image Source="{x:Bind Artwork}" Stretch="Uniform" />
                     </Grid>
                 </Border>
                 <StackPanel
@@ -182,20 +199,26 @@
                         TextTrimming="CharacterEllipsis"
                         TextWrapping="NoWrap" />
                 </StackPanel>
-                <Grid
+                <Button
                     Grid.Column="2"
-                    Width="24"
-                    VerticalAlignment="Center">
-                    <ProgressRing
-                        Width="16"
-                        Height="16"
-                        IsActive="{x:Bind IsBusy, Mode=OneWay}" />
-                    <FontIcon
-                        FontSize="14"
-                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                        Glyph="{x:Bind StateGlyph, Mode=OneWay}"
-                        Visibility="{x:Bind StateGlyphVisibility, Mode=OneWay}" />
-                </Grid>
+                    VerticalAlignment="Center"
+                    AutomationProperties.AccessibilityView="Raw"
+                    Click="SearchFollowButton_Click"
+                    IsTabStop="False"
+                    Style="{StaticResource FlyoutIconButtonStyle}"
+                    Tag="{x:Bind}">
+                    <Grid>
+                        <ProgressRing
+                            Width="18"
+                            Height="18"
+                            IsActive="{x:Bind IsBusy, Mode=OneWay}" />
+                        <FontIcon
+                            FontSize="18"
+                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                            Glyph="{x:Bind StateGlyph, Mode=OneWay}"
+                            Visibility="{x:Bind StateGlyphVisibility, Mode=OneWay}" />
+                    </Grid>
+                </Button>
             </Grid>
         </DataTemplate>
     </Page.Resources>
@@ -224,7 +247,7 @@
                 Style="{StaticResource FlyoutIconButtonStyle}"
                 ToolTipService.ToolTip="Back"
                 Visibility="Collapsed">
-                <FontIcon FontSize="14" Glyph="&#xE72B;" />
+                <FontIcon FontSize="16" Glyph="&#xE72B;" />
             </Button>
             <TextBlock
                 x:Name="TitleText"
@@ -242,7 +265,7 @@
                 Click="AddButton_Click"
                 Style="{StaticResource FlyoutIconButtonStyle}"
                 ToolTipService.ToolTip="Add a podcast">
-                <FontIcon FontSize="14" Glyph="&#xE710;" />
+                <FontIcon FontSize="18" Glyph="&#xE710;" />
             </Button>
             <Button
                 x:Name="RefreshButton"
@@ -254,7 +277,7 @@
                 <Grid>
                     <FontIcon
                         x:Name="RefreshIcon"
-                        FontSize="14"
+                        FontSize="16"
                         Glyph="&#xE72C;" />
                     <ProgressRing
                         x:Name="LoadingRing"
@@ -270,7 +293,7 @@
                 Click="SettingsButton_Click"
                 Style="{StaticResource FlyoutIconButtonStyle}"
                 ToolTipService.ToolTip="Settings">
-                <FontIcon FontSize="14" Glyph="&#xE713;" />
+                <FontIcon FontSize="16" Glyph="&#xE713;" />
             </Button>
         </Grid>
 
@@ -375,7 +398,7 @@
                             FontSize="20"
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                             Glyph="&#xE8D6;" />
-                        <Image x:Name="ShowArt" Stretch="UniformToFill" />
+                        <Image x:Name="ShowArt" Stretch="Uniform" />
                     </Grid>
                 </Border>
                 <StackPanel
@@ -392,6 +415,20 @@
                         Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                         Style="{StaticResource CaptionTextBlockStyle}" />
                 </StackPanel>
+                <!--  A show that isn't followed yet: follow it whole, or add single episodes below  -->
+                <Button
+                    x:Name="FollowButton"
+                    Grid.Column="2"
+                    Grid.ColumnSpan="2"
+                    VerticalAlignment="Center"
+                    Click="FollowButton_Click"
+                    Style="{StaticResource AccentButtonStyle}"
+                    Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon FontSize="14" Glyph="&#xE710;" />
+                        <TextBlock Text="Follow" />
+                    </StackPanel>
+                </Button>
                 <Button
                     x:Name="ShowOptionsButton"
                     Grid.Column="2"
@@ -566,7 +603,7 @@
                         <Image
                             x:Name="FullArt"
                             AutomationProperties.AccessibilityView="Raw"
-                            Stretch="UniformToFill" />
+                            Stretch="Uniform" />
                     </Grid>
                 </Border>
             </Viewbox>
@@ -635,7 +672,7 @@
                                     FontSize="14"
                                     Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                     Glyph="&#xE8D6;" />
-                                <Image x:Name="NowPlayingArt" Stretch="UniformToFill" />
+                                <Image x:Name="NowPlayingArt" Stretch="Uniform" />
                             </Grid>
                         </Border>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">

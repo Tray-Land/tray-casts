@@ -31,6 +31,13 @@ public sealed class Subscription
 
     public string? ArtworkUrl { get; set; }
 
+    /// <summary>
+    /// False for a show kept only for episodes saved one at a time: <see cref="Episodes"/> then holds
+    /// just those, and the show is never refreshed, counted as new, or listed under Shows. Also false
+    /// for the unsaved preview of a show opened from search.
+    /// </summary>
+    public bool IsFollowed { get; set; } = true;
+
     public DateTimeOffset AddedUtc { get; set; }
 
     public DateTimeOffset? LastCheckedUtc { get; set; }
